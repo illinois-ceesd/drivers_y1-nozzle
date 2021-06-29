@@ -646,6 +646,8 @@ def main(ctx_factory=cl.create_some_context, casename="nozzle", user_input_file=
         if errors:
             raise RuntimeError("Error detected by user checkpoint, exiting.")
 
+        return dt
+
     if rank == 0:
         logging.info("Stepping.")
 

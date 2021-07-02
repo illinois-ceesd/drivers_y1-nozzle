@@ -59,7 +59,7 @@ from mirgecom.simutil import (
     check_naninf_local,
     check_range_local
 )
-from mirgecom.restart import (write_restart_file)
+from mirgecom.restart import write_restart_file
 from mirgecom.io import make_init_message
 from mirgecom.mpi import mpi_entry_point
 import pyopencl.tools as cl_tools
@@ -80,7 +80,8 @@ from logpyle import IntervalTimer
 from mirgecom.euler import extract_vars_for_logging, units_for_logging
 from mirgecom.logging_quantities import (
     initialize_logmgr, logmgr_add_many_discretization_quantities,
-    logmgr_add_cl_device_info, logmgr_set_time, LogUserQuantity)
+    logmgr_add_cl_device_info, logmgr_set_time, LogUserQuantity
+)
 
 logger = logging.getLogger(__name__)
 
@@ -280,14 +281,13 @@ def main(ctx_factory=cl.create_some_context,
         print(f"\tShock capturing parameters: alpha {alpha_sc}, "
               f"s0 {s0_sc}, kappa {kappa_sc}")
         print(f"\tTime integration {integrator}")
-        print('#### Simluation control data: ####")
+        print("#### Simluation control data: ####")
 
     restart_path = "restart_data/"
     viz_path = "viz_data/"
 
     dim = 3
     current_cfl = 1.0
-    vel_init = np.zeros(shape=(dim, ))
     vel_inflow = np.zeros(shape=(dim, ))
     vel_outflow = np.zeros(shape=(dim, ))
     current_t = 0
@@ -333,12 +333,12 @@ def main(ctx_factory=cl.create_some_context,
         g = gamma
         M0 = mach_guess
         while nextError > error:
-            R = ((2/(g + 1) + ((g - 1)/(g + 1)*M0*M0))**(((g + 1)/(2*g - 2))))/M0
-                - area_ratio
-            dRdM = (2*((2/(g + 1) + ((g - 1)/(g + 1)*M0*M0))**(((g + 1)/(2*g - 2))))/
-                   (2*g - 2)*(g - 1)/(2/(g + 1) + ((g - 1)/(g + 1)*M0*M0)) -
-                   ((2/(g + 1) + ((g - 1)/(g + 1)*M0*M0))**(((g + 1)/ (2*g - 2))))
-                   *M0**(-2))
+            R = (((2/(g + 1) + ((g - 1)/(g + 1)*M0*M0))**(((g + 1)/(2*g - 2))))/M0
+                - area_ratio)
+            dRdM = (2*((2/(g + 1) + ((g - 1)/(g + 1)*M0*M0))**(((g + 1)/(2*g - 2))))
+                   / (2*g - 2)*(g - 1)/(2/(g + 1) + ((g - 1)/(g + 1)*M0*M0)) -
+                   ((2/(g + 1) + ((g - 1)/(g + 1)*M0*M0))**(((g + 1)/(2*g - 2))))
+                   * M0**(-2))
             M1 = M0 - R/dRdM
             nextError = abs(R)
             M0 = M1
@@ -401,8 +401,7 @@ def main(ctx_factory=cl.create_some_context,
     bulk_init = PlanarDiscontinuity(dim=dim, disc_location=-.30, sigma=0.005,
         temperature_left=temp_inflow, temperature_right=temp_bkrnd,
         pressure_left=pres_inflow, pressure_right=pres_bkrnd,
-        velocity_left=vel_inflow, velocity_right=vel_outflow
-    )
+        velocity_left=vel_inflow, velocity_right=vel_outflow)
 
     # pressure ramp function
     def inflow_ramp_pressure(
@@ -414,7 +413,7 @@ def main(ctx_factory=cl.create_some_context,
     ):
         if t > t_ramp_start:
             rampPressure = min(
-                finalP, startP + (t - t_ramp_start)/ramp_interval*
+                finalP, startP + (t - t_ramp_start)/ramp_interval *
                 (finalP - startP)
             )
         else:
@@ -459,8 +458,7 @@ def main(ctx_factory=cl.create_some_context,
 
             mass = 0.0*x_vec[0] + rho
             mom = velocity*mass
-            energy = (pressure/
-                      (gamma - 1.0)) + np.dot(mom, mom)/(2.0*mass)
+            energy = (pressure/(gamma - 1.0)) + np.dot(mom, mom)/(2.0*mass)
             return make_conserved(
                 dim=self._dim,
                 mass=mass,
@@ -713,7 +711,7 @@ def main(ctx_factory=cl.create_some_context,
                       checkpoint=my_checkpoint,
                       get_timestep=get_timestep, state=current_state,
                       t_final=t_final, t=current_t, istep=current_step,
-                      logmgr=logmgr,eos=eos,dim=dim)
+                      logmgr=logmgr, eos=eos, dim=dim)
 
     if rank == 0:
         logger.info("Checkpointing final state ...")

@@ -301,7 +301,7 @@ def main(ctx_factory=cl.create_some_context,
     #   cp = 37.135 J/mol-K,
     #   rho= 1.977 kg/m^3 @298K
     gamma_CO2 = 1.289
-    R_CO2 = 8314.59 / 44.009
+    R_CO2 = 8314.59/44.009
 
     # background
     #   100 Pa
@@ -323,9 +323,9 @@ def main(ctx_factory=cl.create_some_context,
     # calculate the inlet Mach number from the area ratio
     nozzleInletRadius = 13.0e-3
     nozzleThroatRadius = 6.3e-3
-    nozzleInletArea = math.pi * nozzleInletRadius * nozzleInletRadius
-    nozzleThroatArea = math.pi * nozzleThroatRadius * nozzleThroatRadius
-    inletAreaRatio = nozzleInletArea / nozzleThroatArea
+    nozzleInletArea = math.pi*nozzleInletRadius*nozzleInletRadius
+    nozzleThroatArea = math.pi*nozzleThroatRadius*nozzleThroatRadius
+    inletAreaRatio = nozzleInletArea/nozzleThroatArea
 
     def getMachFromAreaRatio(area_ratio, gamma, mach_guess=0.01):
         error = 1.0e-8

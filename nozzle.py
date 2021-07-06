@@ -772,7 +772,7 @@ if __name__ == "__main__":
     casename = "nozzle"
     if args.casename:
         print(f"Custom casename {args.casename}")
-        casename = (args.casename).replace("'", "")
+        casename = args.casename.replace("'", "")
     else:
         print(f"Default casename {casename}")
 

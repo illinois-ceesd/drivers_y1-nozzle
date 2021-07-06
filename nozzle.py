@@ -264,7 +264,7 @@ def main(ctx_factory=cl.create_some_context,
         error_message = "Invalid time integrator: {}".format(integrator)
         raise RuntimeError(error_message)
 
-    if (rank == 0):
+    if rank == 0:
         print("#### Simluation control data: ####")
         print(f"\tnviz = {nviz}")
         print(f"\tnrestart = {nrestart}")

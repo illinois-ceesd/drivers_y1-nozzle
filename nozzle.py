@@ -788,8 +788,8 @@ if __name__ == "__main__":
         print(f"name {restart_name}")
 
     input_file = None
-    if (args.input_file):
-        input_file = (args.input_file).replace("'", "")
+    if args.input_file:
+        input_file = args.input_file.replace("'", "")
         print(f"Reading user input from {args.input_file}")
     else:
         print("No user input file, using default values")

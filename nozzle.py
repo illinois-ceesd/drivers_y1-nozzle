@@ -779,7 +779,7 @@ if __name__ == "__main__":
     snapshot_pattern = "{casename}-{step:06d}-{rank:04d}.pkl"
     restart_step = None
     restart_name = None
-    if (args.restart_file):
+    if args.restart_file:
         print(f"Restarting from file {args.restart_file}")
         file_path, file_name = os.path.split(args.restart_file)
         restart_step = int(file_name.split("-")[1])

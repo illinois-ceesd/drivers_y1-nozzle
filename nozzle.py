@@ -264,6 +264,7 @@ def main(ctx_factory=cl.create_some_context,
         error_message = "Invalid time integrator: {}".format(integrator)
         raise RuntimeError(error_message)
 
+
     if rank == 0:
         print("#### Simluation control data: ####")
         print(f"\tnviz = {nviz}")
@@ -277,7 +278,14 @@ def main(ctx_factory=cl.create_some_context,
               f"s0 {s0_sc}, kappa {kappa_sc}")
         print(f"\tTime integration {integrator}")
         print("#### Simluation control data: ####")
-
+        
+    timestepper=rk4_step
+    if integrator == "euler":
+        timestepper = euler_step
+    if integrator == "lsrk54":
+        timestepper = lsrk54_step
+    if integrator == "lsrk144":
+        timestepper = lsrk144_step
     restart_path = "restart_data/"
     viz_path = "viz_data/"
 
@@ -377,16 +385,9 @@ def main(ctx_factory=cl.create_some_context,
         print(f"inlet pressure {pres_inflow}")
         print(f"final inlet pressure {pres_inflow_final}")
 
-    allowed_integrators = ["rk4", "euler", "lsrk54", "lsrk144"]
-    timestepper = rk4_step
-    if integrator == "euler":
-        timestepper = euler_step
-    if integrator == "lsrk54":
-        timestepper = lsrk54_step
-    if integrator == "lsrk144":
-        timestepper = lsrk144_step
-    mu = 1.0e-5
-    kappa = rho_bkrnd * mu / 0.75
+
+    mu = 1.e-5
+    kappa = rho_bkrnd*mu/0.75
     transport_model = SimpleTransport(viscosity=mu, thermal_conductivity=kappa)
     eos = IdealSingleGas(
         gamma=gamma_CO2,
@@ -495,12 +496,9 @@ def main(ctx_factory=cl.create_some_context,
         local_nelements = local_mesh.nelements
 
     else:  # Restart
-        from mirgecom.simutil import read_restart_data
-        restart_file = "restart_data/" + snapshot_pattern.format(
-            casename=restart_name,
-            step=restart_step,
-            rank=rank
-        )
+
+        from mirgecom.restart import read_restart_data
+        restart_file = 'restart_data/'+snapshot_pattern.format(casename=restart_name, step=restart_step, rank=rank)
         restart_data = read_restart_data(actx, restart_file)
 
         local_mesh = restart_data["local_mesh"]
@@ -511,10 +509,12 @@ def main(ctx_factory=cl.create_some_context,
 
     if rank == 0:
         logging.info("Making discretization")
+
     discr = EagerDGDiscretization(actx,
                                   local_mesh,
                                   order=order,
                                   mpi_communicator=comm)
+
     nodes = thaw(actx, discr.nodes())
 
     # initialize the sponge field

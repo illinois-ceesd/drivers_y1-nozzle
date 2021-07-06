@@ -260,7 +260,7 @@ def main(ctx_factory=cl.create_some_context,
 
     # param sanity check
     allowed_integrators = ["rk4", "euler", "lsrk54", "lsrk144"]
-    if (integrator not in allowed_integrators):
+    if integrator not in allowed_integrators:
         error_message = "Invalid time integrator: {}".format(integrator)
         raise RuntimeError(error_message)
 

@@ -22,3 +22,25 @@ jobs:
             run: |
                 python -m pip install flake8 flake8-quotes
                 python -m flake8 nozzle.py
+
+    pylint:
+        name: Pylint
+        runs-on: ubuntu-latest
+        steps:
+        - uses: actions/checkout@v2
+        -
+          uses: actions/setup-python@v1
+          with:
+            python-version: '3.x'
+        - name: Install
+          run: |
+            . .ci-support/install.sh
+
+        - name: Pylint test
+          run: |
+            MINIFORGE_INSTALL_DIR=.miniforge3
+            . "$MINIFORGE_INSTALL_DIR/bin/activate" testing
+            python -m pip install wheel
+            python -m pip install pylint pyyaml
+            curl -L -O https://raw.githubusercontent.com/inducer/ci-support/master/run-pylint.py
+            python run-pylint.py --yaml-rcfile=.pylintrc.yml "$(basename $GITHUB_REPOSITORY)" nozzle.py && echo "Pylint found no errors."

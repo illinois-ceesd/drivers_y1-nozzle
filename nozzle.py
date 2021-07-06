@@ -264,7 +264,6 @@ def main(ctx_factory=cl.create_some_context,
         error_message = "Invalid time integrator: {}".format(integrator)
         raise RuntimeError(error_message)
 
-
     if rank == 0:
         print("#### Simluation control data: ####")
         print(f"\tnviz = {nviz}")
@@ -278,8 +277,8 @@ def main(ctx_factory=cl.create_some_context,
               f"s0 {s0_sc}, kappa {kappa_sc}")
         print(f"\tTime integration {integrator}")
         print("#### Simluation control data: ####")
-        
-    timestepper=rk4_step
+
+    timestepper = rk4_step
     if integrator == "euler":
         timestepper = euler_step
     if integrator == "lsrk54":
@@ -384,7 +383,6 @@ def main(ctx_factory=cl.create_some_context,
         print(f"inlet temperature {temp_inflow}")
         print(f"inlet pressure {pres_inflow}")
         print(f"final inlet pressure {pres_inflow_final}")
-
 
     mu = 1.e-5
     kappa = rho_bkrnd*mu/0.75
@@ -498,7 +496,9 @@ def main(ctx_factory=cl.create_some_context,
     else:  # Restart
 
         from mirgecom.restart import read_restart_data
-        restart_file = 'restart_data/'+snapshot_pattern.format(casename=restart_name, step=restart_step, rank=rank)
+        restart_file = "restart_data/"+snapshot_pattern.format(casename=restart_name,
+                                                               step=restart_step,
+                                                               rank=rank)
         restart_data = read_restart_data(actx, restart_file)
 
         local_mesh = restart_data["local_mesh"]

@@ -1,9 +1,4 @@
-"""mirgecom driver for convering-diverging nozzle flow
-
-Note: this example requires a *scaled* version of the Y0
-grid. A working grid example is located here:
-github.com:/illinois-ceesd/data@y0scaled
-"""
+"""Run the nozzle case."""
 
 __copyright__ = """
 Copyright (C) 2020 University of Illinois Board of Trustees

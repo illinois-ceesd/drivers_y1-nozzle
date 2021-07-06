@@ -520,7 +520,7 @@ def main(ctx_factory=cl.create_some_context,
     # initialize the sponge field
     def gen_sponge():
         thickness = 0.15
-        amplitude = 1. / current_dt / 25.
+        amplitude = 1.0/current_dt/25.0
         x0 = 0.05
 
         return (amplitude * actx.np.where(
@@ -607,7 +607,7 @@ def main(ctx_factory=cl.create_some_context,
                            constant_cfl=constant_cfl)
 
     def sponge(cv, cv_ref, sigma):
-        return (sigma * (cv_ref - cv))
+        return (sigma*(cv_ref - cv))
 
     def my_rhs(t, state):
         return (

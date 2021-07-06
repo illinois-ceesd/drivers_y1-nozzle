@@ -260,11 +260,11 @@ def main(ctx_factory=cl.create_some_context,
 
     # param sanity check
     allowed_integrators = ["rk4", "euler", "lsrk54", "lsrk144"]
-    if (integrator not in allowed_integrators):
+    if integrator not in allowed_integrators:
         error_message = "Invalid time integrator: {}".format(integrator)
         raise RuntimeError(error_message)
 
-    if (rank == 0):
+    if rank == 0:
         print("#### Simluation control data: ####")
         print(f"\tnviz = {nviz}")
         print(f"\tnrestart = {nrestart}")
@@ -770,16 +770,16 @@ if __name__ == "__main__":
 
     # for writing output
     casename = "nozzle"
-    if (args.casename):
+    if args.casename:
         print(f"Custom casename {args.casename}")
-        casename = (args.casename).replace("'", "")
+        casename = args.casename.replace("'", "")
     else:
         print(f"Default casename {casename}")
 
     snapshot_pattern = "{casename}-{step:06d}-{rank:04d}.pkl"
     restart_step = None
     restart_name = None
-    if (args.restart_file):
+    if args.restart_file:
         print(f"Restarting from file {args.restart_file}")
         file_path, file_name = os.path.split(args.restart_file)
         restart_step = int(file_name.split("-")[1])
@@ -788,8 +788,8 @@ if __name__ == "__main__":
         print(f"name {restart_name}")
 
     input_file = None
-    if (args.input_file):
-        input_file = (args.input_file).replace("'", "")
+    if args.input_file:
+        input_file = args.input_file.replace("'", "")
         print(f"Reading user input from {args.input_file}")
     else:
         print("No user input file, using default values")

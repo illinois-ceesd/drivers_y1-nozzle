@@ -41,6 +41,9 @@ jobs:
         - name: Run pylint
           run: |
             source emirge/config/activate_env.sh
+            cd emirge/mirgecom
+            git branch
+            cd ../../
             python -m pip install wheel
             python -m pip install pylint pyyaml
             curl -L -O https://raw.githubusercontent.com/inducer/ci-support/master/run-pylint.py

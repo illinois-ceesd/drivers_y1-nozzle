@@ -377,10 +377,10 @@ def main(ctx_factory=cl.create_some_context,
         gamma_CO2 * pres_inflow / rho_inflow)
 
     if rank == 0:
-        print(f'inlet Mach number {inlet_mach}')
-        print(f'inlet temperature {temp_inflow}')
-        print(f'inlet pressure {pres_inflow}')
-        print(f'final inlet pressure {pres_inflow_final}')
+        print(f"inlet Mach number {inlet_mach}")
+        print(f"inlet temperature {temp_inflow}")
+        print(f"inlet pressure {pres_inflow}")
+        print(f"final inlet pressure {pres_inflow_final}")
 
     allowed_integrators = ["rk4", "euler", "lsrk54", "lsrk144"]
     timestepper = rk4_step
@@ -501,7 +501,7 @@ def main(ctx_factory=cl.create_some_context,
 
     else:  # Restart
         from mirgecom.simutil import read_restart_data
-        restart_file = 'restart_data/' + snapshot_pattern.format(
+        restart_file = "restart_data/" + snapshot_pattern.format(
             casename=restart_name,
             step=restart_step,
             rank=rank
@@ -737,27 +737,27 @@ if __name__ == "__main__":
     import argparse
     parser = argparse.ArgumentParser(
         description="MIRGE-Com Isentropic Nozzle Driver")
-    parser.add_argument('-r',
-                        '--restart_file',
+    parser.add_argument("-r",
+                        "--restart_file",
                         type=ascii,
-                        dest='restart_file',
-                        nargs='?',
-                        action='store',
-                        help='simulation restart file')
-    parser.add_argument('-i',
-                        '--input_file',
+                        dest="restart_file",
+                        nargs="?",
+                        action="store",
+                        help="simulation restart file")
+    parser.add_argument("-i",
+                        "--input_file",
                         type=ascii,
-                        dest='input_file',
-                        nargs='?',
-                        action='store',
-                        help='simulation config file')
-    parser.add_argument('-c',
-                        '--casename',
+                        dest="input_file",
+                        nargs="?",
+                        action="store",
+                        help="simulation config file")
+    parser.add_argument("-c",
+                        "--casename",
                         type=ascii,
-                        dest='casename',
-                        nargs='?',
-                        action='store',
-                        help='simulation case name')
+                        dest="casename",
+                        nargs="?",
+                        action="store",
+                        help="simulation case name")
     parser.add_argument("--profile",
                         action="store_true",
                         default=False,
@@ -787,8 +787,8 @@ if __name__ == "__main__":
     if (args.restart_file):
         print(f"Restarting from file {args.restart_file}")
         file_path, file_name = os.path.split(args.restart_file)
-        restart_step = int(file_name.split('-')[1])
-        restart_name = (file_name.split('-')[0]).replace("'", "")
+        restart_step = int(file_name.split("-")[1])
+        restart_name = (file_name.split("-")[0]).replace("'", "")
         print(f"step {restart_step}")
         print(f"name {restart_name}")
 

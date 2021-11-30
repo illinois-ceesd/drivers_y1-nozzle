@@ -38,10 +38,9 @@ from grudge.dof_desc import DTAG_BOUNDARY
 from grudge.eager import EagerDGDiscretization
 from grudge.shortcuts import make_visualizer
 
-from meshmode.array_context import (
-    PyOpenCLArrayContext,
-    PytatoPyOpenCLArrayContext
-)
+from grudge.array_context import (PyOpenCLArrayContext,
+    MPIPytatoPyOpenCLArrayContext)
+
 from mirgecom.profiling import PyOpenCLProfilingArrayContext
 
 from mirgecom.navierstokes import ns_operator
@@ -178,9 +177,11 @@ def main(ctx_factory=cl.create_some_context, restart_filename=None,
     else:
         queue = cl.CommandQueue(cl_ctx)
 
-    actx = actx_class(
-        queue,
-        allocator=cl_tools.MemoryPool(cl_tools.ImmediateAllocator(queue)))
+    if actx_class == MPIPytatoPyOpenCLArrayContext:
+        actx = actx_class(comm, queue)
+    else:
+        actx = actx_class(queue,
+            allocator=cl_tools.MemoryPool(cl_tools.ImmediateAllocator(queue)))
 
     # Most of these can be set by the user input file
 
@@ -805,7 +806,7 @@ if __name__ == "__main__":
             raise ValueError("Can't use lazy and profiling together.")
         actx_class = PyOpenCLProfilingArrayContext
     else:
-        actx_class = PytatoPyOpenCLArrayContext if args.lazy \
+        actx_class = MPIPytatoPyOpenCLArrayContext if args.lazy \
             else PyOpenCLArrayContext
 
     restart_filename = None

@@ -32,7 +32,7 @@ import numpy.linalg as la  # noqa
 import pyopencl.array as cla  # noqa
 import math
 
-from meshmode.dof_array import thaw
+from arraycontext import thaw
 from meshmode.mesh import BTAG_ALL, BTAG_NONE  # noqa
 from grudge.dof_desc import DTAG_BOUNDARY
 from grudge.eager import EagerDGDiscretization
@@ -64,13 +64,16 @@ from mirgecom.integrators import (rk4_step, lsrk54_step, lsrk144_step,
                                   euler_step)
 from mirgecom.steppers import advance_state
 from mirgecom.boundary import (
-    PrescribedInviscidBoundary,
+    PrescribedFluidBoundary,
     IsothermalNoSlipBoundary
 )
 from mirgecom.initializers import (Uniform, PlanarDiscontinuity)
 from mirgecom.eos import IdealSingleGas
 from mirgecom.transport import SimpleTransport
-
+from mirgecom.gas_model import (
+    GasModel,
+    make_fluid_state
+)
 from logpyle import IntervalTimer, set_dt
 from mirgecom.euler import extract_vars_for_logging, units_for_logging
 from mirgecom.logging_quantities import (
@@ -401,9 +404,10 @@ def main(ctx_factory=cl.create_some_context, restart_filename=None,
     transport_model = SimpleTransport(viscosity=mu, thermal_conductivity=kappa)
     eos = IdealSingleGas(
         gamma=gamma_CO2,
-        gas_const=R_CO2,
-        transport_model=transport_model
+        gas_const=R_CO2
     )
+    gas_model = GasModel(eos=eos, transport=transport_model)
+
     bulk_init = PlanarDiscontinuity(dim=dim, disc_location=-.30, sigma=0.005,
         temperature_left=temp_inflow, temperature_right=temp_bkrnd,
         pressure_left=pres_inflow, pressure_right=pres_bkrnd,
@@ -484,8 +488,24 @@ def main(ctx_factory=cl.create_some_context, restart_filename=None,
         velocity=vel_outflow
     )
 
-    inflow = PrescribedInviscidBoundary(fluid_solution_func=inflow_init)
-    outflow = PrescribedInviscidBoundary(fluid_solution_func=outflow_init)
+    def _boundary_state_func(discr, btag, gas_model, actx, init_func, **kwargs):
+        bnd_discr = discr.discr_from_dd(btag)
+        nodes = thaw(bnd_discr.nodes(), actx)
+        return make_fluid_state(init_func(x_vec=nodes, eos=gas_model.eos,
+                                          **kwargs), gas_model)
+
+    def _inflow_state_func(discr, btag, gas_model, state_minus, **kwargs):
+        return _boundary_state_func(discr, btag, gas_model,
+                                    state_minus.array_context,
+                                    inflow_init, **kwargs)
+
+    def _outflow_state_func(discr, btag, gas_model, state_minus, **kwargs):
+        return _boundary_state_func(discr, btag, gas_model,
+                                    state_minus.array_context,
+                                    outflow_init, **kwargs)
+    inflow = PrescribedFluidBoundary(boundary_state_func=_inflow_state_func)
+    outflow = PrescribedFluidBoundary(boundary_state_func=_outflow_state_func)
+
     wall = IsothermalNoSlipBoundary()
 
     boundaries = {
@@ -529,7 +549,7 @@ def main(ctx_factory=cl.create_some_context, restart_filename=None,
                                   order=order,
                                   mpi_communicator=comm)
 
-    nodes = thaw(actx, discr.nodes())
+    nodes = thaw(discr.nodes(), actx)
 
     # initialize the sponge field
     def gen_sponge():
@@ -545,12 +565,12 @@ def main(ctx_factory=cl.create_some_context, restart_filename=None,
 
     zeros = 0 * nodes[0]
     sponge_sigma = gen_sponge()
-    ref_state = bulk_init(x_vec=nodes, eos=eos, time=0.0)
+    ref_cv = bulk_init(x_vec=nodes, eos=eos, time=0.0)
 
     if restart_filename:
         if rank == 0:
             logging.info("Restarting soln.")
-        current_state = restart_data["state"]
+        current_cv = restart_data["cv"]
         if restart_order != order:
             restart_discr = EagerDGDiscretization(
                 actx,
@@ -563,15 +583,16 @@ def main(ctx_factory=cl.create_some_context, restart_filename=None,
                 discr.discr_from_dd("vol"),
                 restart_discr.discr_from_dd("vol")
             )
-            restart_state = restart_data["state"]
-            current_state = connection(restart_state)
+            current_cv = connection(restart_data["cv"])
     else:
         if rank == 0:
             logging.info("Initializing soln.")
         # for Discontinuity initial conditions
-        current_state = bulk_init(x_vec=nodes, eos=eos, time=0.0)
+        current_cv = bulk_init(x_vec=nodes, eos=eos, time=0.0)
         # for uniform background initial condition
-        #current_state = bulk_init(nodes, eos=eos)
+        #current_cv = bulk_init(nodes, eos=eos)
+
+    current_state = make_fluid_state(current_cv, gas_model)
 
     vis_timer = None
     log_cfl = LogUserQuantity(name="cfl", value=current_cfl)
@@ -636,25 +657,23 @@ def main(ctx_factory=cl.create_some_context, restart_filename=None,
         return (sigma*(cv_ref - cv))
 
     def my_rhs(t, state):
+        fluid_state = make_fluid_state(state, gas_model)
+        cv = fluid_state.cv
         return (
-            ns_operator(discr, cv=state, t=t, boundaries=boundaries, eos=eos)
+            ns_operator(discr, state=fluid_state, time=t, boundaries=boundaries,
+                        gas_model=gas_model)
             + make_conserved(
-                dim, q=av_operator(discr, q=state.join(), boundaries=boundaries,
-                                   boundary_kwargs={"time": t, "eos": eos},
+                dim, q=av_operator(discr, q=cv.join(), boundaries=boundaries,
+                                   boundary_kwargs={"time": t,
+                                                    "gas_model": gas_model},
                                    alpha=alpha_sc, s0=s0_sc, kappa=kappa_sc)
-            ) + sponge(cv=state, cv_ref=ref_state, sigma=sponge_sigma)
+            ) + sponge(cv=cv, cv_ref=ref_cv, sigma=sponge_sigma)
         )
 
-    def my_write_viz(step, t, dt, state, dv=None, tagged_cells=None, ts_field=None):
-        if dv is None:
-            dv = eos.dependent_vars(state)
-        if tagged_cells is None:
-            tagged_cells = smoothness_indicator(discr, state.mass, s0=s0_sc,
-                                                kappa=kappa_sc)
-        if ts_field is None:
-            ts_field, cfl, dt = my_get_timestep(t, dt, state)
-
-        viz_fields = [("cv", state),
+    def my_write_viz(step, t, dt, cv, dv, ts_field):
+        tagged_cells = smoothness_indicator(discr, cv.mass, s0=s0_sc,
+                                            kappa=kappa_sc)
+        viz_fields = [("cv", cv),
                       ("dv", dv),
                       ("sponge_sigma", gen_sponge()),
                       ("tagged_cells", tagged_cells),
@@ -662,12 +681,12 @@ def main(ctx_factory=cl.create_some_context, restart_filename=None,
         write_visfile(discr, viz_fields, visualizer, vizname=vizname,
                       step=step, t=t, overwrite=True)
 
-    def my_write_restart(step, t, state):
+    def my_write_restart(step, t, cv):
         restart_fname = restart_pattern.format(cname=casename, step=step, rank=rank)
         if restart_fname != restart_filename:
             restart_data = {
                 "local_mesh": local_mesh,
-                "state": state,
+                "cv": cv,
                 "t": t,
                 "step": step,
                 "order": order,
@@ -693,26 +712,28 @@ def main(ctx_factory=cl.create_some_context, restart_filename=None,
         t_remaining = max(0, t_final - t)
         if constant_cfl:
             from mirgecom.viscous import get_viscous_timestep
-            ts_field = current_cfl * get_viscous_timestep(discr, eos=eos, cv=state)
+            ts_field = current_cfl * get_viscous_timestep(discr, state=state)
             from grudge.op import nodal_min
             dt = actx.to_numpy(nodal_min(discr, "vol", ts_field))
             cfl = current_cfl
         else:
             from mirgecom.viscous import get_viscous_cfl
-            ts_field = get_viscous_cfl(discr, eos=eos, dt=dt, cv=state)
+            ts_field = get_viscous_cfl(discr, dt=dt, state=state)
             from grudge.op import nodal_max
             cfl = actx.to_numpy(nodal_max(discr, "vol", ts_field))
 
         return ts_field, cfl, min(t_remaining, dt)
 
     def my_pre_step(step, t, dt, state):
+        fluid_state = make_fluid_state(state, gas_model)
+        dv = fluid_state.dv
+        cv = fluid_state.cv
         try:
-            dv = None
 
             if logmgr:
                 logmgr.tick_before()
 
-            ts_field, cfl, dt = my_get_timestep(t, dt, state)
+            ts_field, cfl, dt = my_get_timestep(t, dt, fluid_state)
             log_cfl.set_quantity(cfl)
 
             do_viz = check_step(step=step, interval=nviz)
@@ -720,7 +741,6 @@ def main(ctx_factory=cl.create_some_context, restart_filename=None,
             do_health = check_step(step=step, interval=nhealth)
 
             if do_health:
-                dv = eos.dependent_vars(state)
                 from mirgecom.simutil import allsync
                 health_errors = allsync(my_health_check(dv), comm,
                                         op=MPI.LOR)
@@ -730,18 +750,18 @@ def main(ctx_factory=cl.create_some_context, restart_filename=None,
                     raise MyRuntimeError("Failed simulation health check.")
 
             if do_restart:
-                my_write_restart(step=step, t=t, state=state)
+                my_write_restart(step=step, t=t, cv=cv)
 
             if do_viz:
-                if dv is None:
-                    dv = eos.dependent_vars(state)
-                my_write_viz(step=step, t=t, dt=dt, state=state, dv=dv)
+                my_write_viz(step=step, t=t, dt=dt, cv=cv, dv=dv,
+                             ts_field=ts_field)
 
         except MyRuntimeError:
             if rank == 0:
                 logger.info("Errors detected; attempting graceful exit.")
-            my_write_viz(step=step, t=t, dt=dt, state=state)
-            my_write_restart(step=step, t=t, state=state)
+            my_write_viz(step=step, t=t, dt=dt, cv=cv, dv=dv,
+                         ts_field=ts_field)
+            my_write_restart(step=step, t=t, cv=cv)
             raise
 
         return state, dt
@@ -751,7 +771,7 @@ def main(ctx_factory=cl.create_some_context, restart_filename=None,
         # imo this is a design/scope flaw
         if logmgr:
             set_dt(logmgr, dt)
-            set_sim_state(logmgr, dim, state, eos)
+            set_sim_state(logmgr, dim, state, gas_model.eos)
             logmgr.tick_after()
         return state, dt
 
@@ -759,22 +779,25 @@ def main(ctx_factory=cl.create_some_context, restart_filename=None,
         logging.info("Stepping.")
 
     current_dt = get_sim_timestep(discr, current_state, current_t, current_dt,
-                                  current_cfl, eos, t_final, constant_cfl)
+                                  current_cfl, t_final, constant_cfl)
 
-    (current_step, current_t, current_state) = \
+    (current_step, current_t, current_cv) = \
         advance_state(rhs=my_rhs, timestepper=timestepper,
                       pre_step_callback=my_pre_step,
                       post_step_callback=my_post_step,
-                      state=current_state, dt=current_dt,
+                      state=current_state.cv, dt=current_dt,
                       t_final=t_final, t=current_t, istep=current_step)
+    current_state = make_fluid_state(current_cv, gas_model)
 
     # Dump the final data
     if rank == 0:
         logger.info("Checkpointing final state ...")
-    final_dv = eos.dependent_vars(current_state)
-    my_write_viz(step=current_step, t=current_t, dt=current_dt, state=current_state,
-                 dv=final_dv)
-    my_write_restart(step=current_step, t=current_t, state=current_state)
+
+    final_dv = current_state.dv
+    ts_field, cfl, dt = my_get_timestep(current_t, current_dt, current_state)
+    my_write_viz(step=current_step, t=current_t, dt=current_dt, cv=current_cv,
+                 dv=final_dv, ts_field=ts_field)
+    my_write_restart(step=current_step, t=current_t, cv=current_cv)
 
     if logmgr:
         logmgr.close()

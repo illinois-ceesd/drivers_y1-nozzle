@@ -38,12 +38,6 @@ from grudge.dof_desc import DTAG_BOUNDARY
 from grudge.eager import EagerDGDiscretization
 from grudge.shortcuts import make_visualizer
 
-from meshmode.array_context import (
-    PyOpenCLArrayContext,
-    SingleGridWorkBalancingPytatoArrayContext as PytatoPyOpenCLArrayContext
-)
-from mirgecom.profiling import PyOpenCLProfilingArrayContext
-
 from mirgecom.navierstokes import ns_operator
 from mirgecom.fluid import make_conserved
 from mirgecom.artificial_viscosity import (
@@ -162,8 +156,11 @@ def get_pseudo_y0_mesh():
 @mpi_entry_point
 def main(ctx_factory=cl.create_some_context, restart_filename=None,
          use_profiling=False, use_logmgr=False, user_input_file=None,
-         actx_class=PyOpenCLArrayContext, casename=None):
+         actx_class=None, casename=None, lazy=False):
     """Drive the Y0 nozzle example."""
+    if actx_class is None:
+        raise RuntimeError("Array context class missing.")
+
     cl_ctx = ctx_factory()
 
     from mpi4py import MPI
@@ -184,9 +181,12 @@ def main(ctx_factory=cl.create_some_context, restart_filename=None,
     else:
         queue = cl.CommandQueue(cl_ctx)
 
-    actx = actx_class(
-        queue,
-        allocator=cl_tools.MemoryPool(cl_tools.ImmediateAllocator(queue)))
+    if lazy:
+        actx = actx_class(comm, queue, mpi_base_tag=12000)
+    else:
+        actx = actx_class(comm, queue,
+                allocator=cl_tools.MemoryPool(cl_tools.ImmediateAllocator(queue)),
+                force_device_scalars=True)
 
     # Most of these can be set by the user input file
 
@@ -840,13 +840,13 @@ if __name__ == "__main__":
     else:
         print(f"Default casename {casename}")
 
+    lazy = args.lazy
     if args.profile:
-        if args.lazy:
+        if lazy:
             raise ValueError("Can't use lazy and profiling together.")
-        actx_class = PyOpenCLProfilingArrayContext
-    else:
-        actx_class = PytatoPyOpenCLArrayContext if args.lazy \
-            else PyOpenCLArrayContext
+
+    from grudge.array_context import get_reasonable_array_context_class
+    actx_class = get_reasonable_array_context_class(lazy=lazy, distributed=True)
 
     restart_filename = None
     if args.restart_file:
@@ -862,7 +862,7 @@ if __name__ == "__main__":
 
     print(f"Running {sys.argv[0]}\n")
     main(restart_filename=restart_filename, use_profiling=args.profile,
-         use_logmgr=args.log, user_input_file=input_file,
+         use_logmgr=args.log, user_input_file=input_file, lazy=lazy,
          actx_class=actx_class, casename=casename)
 
 # vim: foldmethod=marker

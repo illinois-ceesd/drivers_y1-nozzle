@@ -500,19 +500,19 @@ def main(ctx_factory=cl.create_some_context, restart_filename=None,
         velocity=vel_outflow
     )
 
-    def _boundary_state_func(discr, btag, gas_model, actx, init_func, **kwargs):
-        bnd_discr = discr.discr_from_dd(btag)
+    def _boundary_state_func(dcoll, btag, gas_model, actx, init_func, **kwargs):
+        bnd_discr = dcoll.discr_from_dd(btag)
         nodes = thaw(bnd_discr.nodes(), actx)
         return make_fluid_state(init_func(x_vec=nodes, eos=gas_model.eos,
                                           **kwargs), gas_model)
 
-    def _inflow_state_func(discr, btag, gas_model, state_minus, **kwargs):
-        return _boundary_state_func(discr, btag, gas_model,
+    def _inflow_state_func(dcoll, btag, gas_model, state_minus, **kwargs):
+        return _boundary_state_func(dcoll, btag, gas_model,
                                     state_minus.array_context,
                                     inflow_init, **kwargs)
 
-    def _outflow_state_func(discr, btag, gas_model, state_minus, **kwargs):
-        return _boundary_state_func(discr, btag, gas_model,
+    def _outflow_state_func(dcoll, btag, gas_model, state_minus, **kwargs):
+        return _boundary_state_func(dcoll, btag, gas_model,
                                     state_minus.array_context,
                                     outflow_init, **kwargs)
     inflow = PrescribedFluidBoundary(boundary_state_func=_inflow_state_func)
@@ -556,12 +556,12 @@ def main(ctx_factory=cl.create_some_context, restart_filename=None,
     if rank == 0:
         logging.info("Making discretization")
 
-    discr = EagerDGDiscretization(actx,
+    dcoll = EagerDGDiscretization(actx,
                                   local_mesh,
                                   order=order,
                                   mpi_communicator=comm)
 
-    nodes = thaw(discr.nodes(), actx)
+    nodes = thaw(dcoll.nodes(), actx)
 
     # initialize the sponge field
     def gen_sponge():
@@ -584,7 +584,7 @@ def main(ctx_factory=cl.create_some_context, restart_filename=None,
             logging.info("Restarting soln.")
         current_cv = restart_data["cv"]
         if restart_order != order:
-            restart_discr = EagerDGDiscretization(
+            restart_dcoll = EagerDGDiscretization(
                 actx,
                 local_mesh,
                 order=restart_order,
@@ -592,8 +592,8 @@ def main(ctx_factory=cl.create_some_context, restart_filename=None,
             from meshmode.discretization.connection import make_same_mesh_connection
             connection = make_same_mesh_connection(
                 actx,
-                discr.discr_from_dd("vol"),
-                restart_discr.discr_from_dd("vol")
+                dcoll.discr_from_dd("vol"),
+                restart_dcoll.discr_from_dd("vol")
             )
             current_cv = connection(restart_data["cv"])
     else:
@@ -624,7 +624,7 @@ def main(ctx_factory=cl.create_some_context, restart_filename=None,
         ])
 
         if logDependent:
-            logmgr_add_many_discretization_quantities(logmgr, discr, dim,
+            logmgr_add_many_discretization_quantities(logmgr, dcoll, dim,
                                                       extract_vars_for_logging,
                                                       units_for_logging)
             logmgr.add_watches([
@@ -645,7 +645,7 @@ def main(ctx_factory=cl.create_some_context, restart_filename=None,
         vis_timer = IntervalTimer("t_vis", "Time spent visualizing")
         logmgr.add_quantity(vis_timer)
 
-    visualizer = make_visualizer(discr)
+    visualizer = make_visualizer(dcoll)
 
     initname = "pseudoY0"
     eosname = eos.__class__.__name__
@@ -672,9 +672,9 @@ def main(ctx_factory=cl.create_some_context, restart_filename=None,
         fluid_state = make_fluid_state(state, gas_model)
         cv = fluid_state.cv
         return (
-            ns_operator(discr, state=fluid_state, time=t, boundaries=boundaries,
+            ns_operator(dcoll, state=fluid_state, time=t, boundaries=boundaries,
                         gas_model=gas_model)
-            + av_laplacian_operator(discr, fluid_state=fluid_state,
+            + av_laplacian_operator(dcoll, fluid_state=fluid_state,
                                     boundaries=boundaries,
                                     boundary_kwargs={"time": t,
                                                      "gas_model": gas_model},
@@ -683,14 +683,14 @@ def main(ctx_factory=cl.create_some_context, restart_filename=None,
         )
 
     def my_write_viz(step, t, dt, cv, dv, ts_field):
-        tagged_cells = smoothness_indicator(discr, cv.mass, s0=s0_sc,
+        tagged_cells = smoothness_indicator(dcoll, cv.mass, s0=s0_sc,
                                             kappa=kappa_sc)
         viz_fields = [("cv", cv),
                       ("dv", dv),
                       ("sponge_sigma", gen_sponge()),
                       ("tagged_cells", tagged_cells),
                       ("dt" if constant_cfl else "cfl", ts_field)]
-        write_visfile(discr, viz_fields, visualizer, vizname=vizname,
+        write_visfile(dcoll, viz_fields, visualizer, vizname=vizname,
                       step=step, t=t, overwrite=True)
 
     def my_write_restart(step, t, cv):
@@ -709,11 +709,11 @@ def main(ctx_factory=cl.create_some_context, restart_filename=None,
 
     def my_health_check(dv):
         health_error = False
-        if check_naninf_local(discr, "vol", dv.pressure):
+        if check_naninf_local(dcoll, "vol", dv.pressure):
             health_error = True
             logger.info(f"{rank=}: NANs/Infs in pressure data.")
 
-        if check_range_local(discr, "vol", dv.pressure,
+        if check_range_local(dcoll, "vol", dv.pressure,
                              health_pres_min, health_pres_max):
             health_error = True
             logger.info(f"{rank=}: Pressure range violation.")
@@ -724,15 +724,15 @@ def main(ctx_factory=cl.create_some_context, restart_filename=None,
         t_remaining = max(0, t_final - t)
         if constant_cfl:
             from mirgecom.viscous import get_viscous_timestep
-            ts_field = current_cfl * get_viscous_timestep(discr, state=state)
+            ts_field = current_cfl * get_viscous_timestep(dcoll, state=state)
             from grudge.op import nodal_min
-            dt = actx.to_numpy(nodal_min(discr, "vol", ts_field))
+            dt = actx.to_numpy(nodal_min(dcoll, "vol", ts_field))
             cfl = current_cfl
         else:
             from mirgecom.viscous import get_viscous_cfl
-            ts_field = get_viscous_cfl(discr, dt=dt, state=state)
+            ts_field = get_viscous_cfl(dcoll, dt=dt, state=state)
             from grudge.op import nodal_max
-            cfl = actx.to_numpy(nodal_max(discr, "vol", ts_field))
+            cfl = actx.to_numpy(nodal_max(dcoll, "vol", ts_field))
 
         return ts_field, cfl, min(t_remaining, dt)
 
@@ -790,7 +790,7 @@ def main(ctx_factory=cl.create_some_context, restart_filename=None,
     if rank == 0:
         logging.info("Stepping.")
 
-    current_dt = get_sim_timestep(discr, current_state, current_t, current_dt,
+    current_dt = get_sim_timestep(dcoll, current_state, current_t, current_dt,
                                   current_cfl, t_final, constant_cfl)
 
     (current_step, current_t, current_cv) = \

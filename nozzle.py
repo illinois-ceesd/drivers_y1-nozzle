@@ -34,7 +34,7 @@ import math
 
 from arraycontext import thaw
 from meshmode.mesh import BTAG_ALL, BTAG_NONE  # noqa
-from grudge.dof_desc import DTAG_BOUNDARY
+from grudge.dof_desc import BoundaryDomainTag
 from grudge.eager import EagerDGDiscretization
 from grudge.shortcuts import make_visualizer
 
@@ -500,19 +500,19 @@ def main(ctx_factory=cl.create_some_context, restart_filename=None,
         velocity=vel_outflow
     )
 
-    def _boundary_state_func(dcoll, btag, gas_model, actx, init_func, **kwargs):
-        bnd_discr = dcoll.discr_from_dd(btag)
+    def _boundary_state_func(dcoll, dd_bdry, gas_model, actx, init_func, **kwargs):
+        bnd_discr = dcoll.discr_from_dd(dd_bdry)
         nodes = thaw(bnd_discr.nodes(), actx)
         return make_fluid_state(init_func(x_vec=nodes, eos=gas_model.eos,
                                           **kwargs), gas_model)
 
-    def _inflow_state_func(dcoll, btag, gas_model, state_minus, **kwargs):
-        return _boundary_state_func(dcoll, btag, gas_model,
+    def _inflow_state_func(dcoll, dd_bdry, gas_model, state_minus, **kwargs):
+        return _boundary_state_func(dcoll, dd_bdry, gas_model,
                                     state_minus.array_context,
                                     inflow_init, **kwargs)
 
-    def _outflow_state_func(dcoll, btag, gas_model, state_minus, **kwargs):
-        return _boundary_state_func(dcoll, btag, gas_model,
+    def _outflow_state_func(dcoll, dd_bdry, gas_model, state_minus, **kwargs):
+        return _boundary_state_func(dcoll, dd_bdry, gas_model,
                                     state_minus.array_context,
                                     outflow_init, **kwargs)
     inflow = PrescribedFluidBoundary(boundary_state_func=_inflow_state_func)
@@ -521,9 +521,9 @@ def main(ctx_factory=cl.create_some_context, restart_filename=None,
     wall = IsothermalNoSlipBoundary()
 
     boundaries = {
-        DTAG_BOUNDARY("Inflow"): inflow,
-        DTAG_BOUNDARY("Outflow"): outflow,
-        DTAG_BOUNDARY("Wall"): wall
+        BoundaryDomainTag("Inflow"): inflow,
+        BoundaryDomainTag("Outflow"): outflow,
+        BoundaryDomainTag("Wall"): wall
     }
 
     viz_path = "viz_data/"

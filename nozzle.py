@@ -66,9 +66,9 @@ import pyopencl.tools as cl_tools
 from mirgecom.integrators import (rk4_step, lsrk54_step, lsrk144_step,
                                   euler_step)
 from mirgecom.steppers import advance_state
-from mirgecom.boundary import (
-    PrescribedFluidBoundary,
-    IsothermalNoSlipBoundary
+from mirgecom.artificial_viscosity import (
+    PrescribedFluidBoundaryAV,
+    IsothermalWallAV
 )
 from mirgecom.initializers import (Uniform, PlanarDiscontinuity)
 from mirgecom.eos import IdealSingleGas
@@ -81,7 +81,7 @@ from logpyle import IntervalTimer, set_dt
 from mirgecom.euler import extract_vars_for_logging, units_for_logging
 from mirgecom.logging_quantities import (
     initialize_logmgr, logmgr_add_many_discretization_quantities,
-    logmgr_add_cl_device_info, logmgr_set_time, LogUserQuantity,
+    logmgr_add_cl_device_info, logmgr_set_time,
     set_sim_state, logmgr_add_device_memory_usage
 )
 
@@ -515,10 +515,10 @@ def main(ctx_factory=cl.create_some_context, restart_filename=None,
         return _boundary_state_func(dcoll, dd_bdry, gas_model,
                                     state_minus.array_context,
                                     outflow_init, **kwargs)
-    inflow = PrescribedFluidBoundary(boundary_state_func=_inflow_state_func)
-    outflow = PrescribedFluidBoundary(boundary_state_func=_outflow_state_func)
+    inflow = PrescribedFluidBoundaryAV(boundary_state_func=_inflow_state_func)
+    outflow = PrescribedFluidBoundaryAV(boundary_state_func=_outflow_state_func)
 
-    wall = IsothermalNoSlipBoundary()
+    wall = IsothermalWallAV()
 
     boundaries = {
         BoundaryDomainTag("Inflow"): inflow,
@@ -607,18 +607,15 @@ def main(ctx_factory=cl.create_some_context, restart_filename=None,
     current_state = make_fluid_state(current_cv, gas_model)
 
     vis_timer = None
-    log_cfl = LogUserQuantity(name="cfl", value=current_cfl)
 
     if logmgr:
         logmgr_add_cl_device_info(logmgr, queue)
         logmgr_set_time(logmgr, current_step, current_t)
-        logmgr.add_quantity(log_cfl, interval=nstatus)
         logmgr_add_device_memory_usage(logmgr, queue)
 
         logmgr.add_watches([
             ("step.max", "step = {value}, "),
             ("t_sim.max", "sim time: {value:1.6e} s, "),
-            ("cfl.max", "cfl = {value:1.4f}\n"),
             ("t_step.max", "------- step walltime: {value:6g} s, "),
             ("t_log.max", "log walltime: {value:6g} s\n")
         ])
@@ -746,7 +743,6 @@ def main(ctx_factory=cl.create_some_context, restart_filename=None,
                 logmgr.tick_before()
 
             ts_field, cfl, dt = my_get_timestep(t, dt, fluid_state)
-            log_cfl.set_quantity(cfl)
 
             do_viz = check_step(step=step, interval=nviz)
             do_restart = check_step(step=step, interval=nrestart)
